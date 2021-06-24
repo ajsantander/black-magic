@@ -2,18 +2,29 @@ const { ethers } = require('hardhat');
 const { expect } = require('chai');
 
 describe('larry', function() {
+  let signer;
   let larry;
   let snapshotId;
   let stateRootA, stateRootB;
 
-  async function getStateRoot() {
-    const blockNumberHex = `0x${await ethers.provider.getBlockNumber()}`;
+  const overrides = {
+    gasPrice: 0,
+  };
+
+  async function _getStateRoot() {
+    const block = await ethers.provider.getBlock();
+
+    const blockNumberHex = `0x${block.number.toString(16)}`;
 
     // Getting a block at a lower level, directly via the json-rpc provides more data.
-    const result = await ethers.provider.send('eth_getBlockByNumber', [blockNumberHex, false]);
+    const blockFull = await ethers.provider.send('eth_getBlockByNumber', [blockNumberHex, false]);
 
-    return result.stateRoot;
+    return blockFull.stateRoot;
   }
+
+  before('get signer', async () => {
+    signer = (await ethers.getSigners())[0];
+  });
 
   before('deploy', async () => {
     const Larry = await ethers.getContractFactory('Larry');
@@ -36,15 +47,11 @@ describe('larry', function() {
     before('make larry age', async () => {
       let tx;
 
-      tx = await larry.age(20);
+      tx = await larry.age(20, overrides);
       await tx.wait();
 
-      tx = await larry.age(22);
+      tx = await larry.age(22, overrides);
       await tx.wait();
-    });
-
-    after('get state root', async () => {
-      stateRootA = await getStateRoot();
     });
 
     it('makes larry 42', async () => {
@@ -53,12 +60,16 @@ describe('larry', function() {
       expect(years.toString()).to.be.equal('42');
     });
 
+    it('gets the state root', async () => {
+      stateRootA = await _getStateRoot();
+    });
+
     describe('when rewinding', () => {
       before('restore the snapshot', async () => {
         await ethers.provider.send('evm_revert', [snapshotId]);
       });
 
-      it('shows that larry is 0', async () => {
+      it('shows that larry is 0 again', async () => {
         const years = await larry.yearsLived();
 
         expect(years.toString()).to.be.equal('0');
@@ -68,18 +79,26 @@ describe('larry', function() {
         before('make larry age', async () => {
           let tx;
 
-          tx = await larry.age(42);
+          tx = await larry.age(42, overrides);
           await tx.wait();
         });
 
-        after('get state root', async () => {
-          stateRootB = await getStateRoot();
+        before('send a dummy tx so that the signer nonce is equivalent', async () => {
+          const tx = await signer.sendTransaction({
+            ...overrides,
+            to: signer.address,
+            value: 0,
+          });
         });
 
         it('makes larry 42', async () => {
           const years = await larry.yearsLived();
 
           expect(years.toString()).to.be.equal('42');
+        });
+
+        it('gets the state root', async () => {
+          stateRootB = await _getStateRoot();
         });
 
         describe('when comparing the state roots', () => {
