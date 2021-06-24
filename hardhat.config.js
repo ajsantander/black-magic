@@ -6,5 +6,8 @@ module.exports = {
     hardhat: {
       initialDate: '04 Dec 1995 00:12:00 GMT'
     },
+    localhost: {
+      url: 'http://localhost:8545'
+    }
   }
 };
